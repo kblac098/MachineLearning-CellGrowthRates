@@ -140,6 +140,34 @@ for name in models:
           f"test RMSE = {np.mean(r['test_rmse']):.4f} ± {np.std(r['test_rmse']):.4f} d^-1   "
           f"test R2 = {np.mean(r['test_r2']):.3f} ± {np.std(r['test_r2']):.3f}")
 
+# Export the per-fold results and the summary as CSV tables
+fold_rows = []
+for name in models:
+    r = results[name]
+    for fold in range(NUM_SPLITS):
+        fold_rows.append({
+            "Model": name,
+            "Test Fold": fold + 1,
+            "Best Hyperparameters": str(r["best_params"][fold]),
+            "Train RMSE [d^-1]": round(r["train_rmse"][fold], 4),
+            "Test RMSE [d^-1]": round(r["test_rmse"][fold], 4),
+            "Test R2": round(r["test_r2"][fold], 3),
+        })
+pd.DataFrame(fold_rows).to_csv("tables/cv_results_by_fold.csv", index=False)
+
+summary_rows = []
+for name in models:
+    r = results[name]
+    summary_rows.append({
+        "Model": name,
+        "Mean Train RMSE [d^-1]": round(np.mean(r["train_rmse"]), 4),
+        "Mean Test RMSE [d^-1]": round(np.mean(r["test_rmse"]), 4),
+        "SD Test RMSE [d^-1]": round(np.std(r["test_rmse"]), 4),
+        "Mean Test R2": round(np.mean(r["test_r2"]), 3),
+        "SD Test R2": round(np.std(r["test_r2"]), 3),
+    })
+pd.DataFrame(summary_rows).to_csv("tables/cv_summary.csv", index=False)
+
 # Bar chart of test RMSE per fold
 fig, ax = plt.subplots(figsize=(7, 4))
 bar_width = 0.38
@@ -153,7 +181,7 @@ ax.set_title("Test RMSE by fold")
 ax.set_xticks(fold_ids)
 ax.legend()
 fig.tight_layout()
-fig.savefig("fig_test_rmse_by_fold.png", dpi=150)
+fig.savefig("figures/fig_test_rmse_by_fold.png", dpi=150)
 plt.close(fig)
 
 # ---------------------------------------------------------------------
@@ -179,6 +207,13 @@ axes[0].set_ylabel(r"RMSE [d$^{-1}$]")
 axes[0].set_title("Polynomial regression")
 axes[0].legend()
 
+# Export the hyperparameter search results as CSV tables
+pd.DataFrame({
+    "Polynomial Degree": cv_poly["param_poly__degree"],
+    "Mean Train RMSE [d^-1]": (-cv_poly["mean_train_score"]).round(4),
+    "Mean Validation RMSE [d^-1]": (-cv_poly["mean_test_score"]).round(4),
+}).to_csv("tables/validation_polynomial.csv", index=False)
+
 cv_knn = pd.DataFrame(final_models["kNN"].cv_results_)
 for weights, style in [("uniform", "-"), ("distance", "--")]:
     subset = cv_knn[cv_knn["param_regressor__weights"] == weights]
@@ -191,8 +226,15 @@ axes[1].set_ylabel(r"RMSE [d$^{-1}$]")
 axes[1].set_title("k-nearest neighbors")
 axes[1].legend(fontsize=8)
 
+pd.DataFrame({
+    "k (n_neighbors)": cv_knn["param_regressor__n_neighbors"],
+    "Weights": cv_knn["param_regressor__weights"],
+    "Mean Train RMSE [d^-1]": (-cv_knn["mean_train_score"]).round(4) + 0.0,
+    "Mean Validation RMSE [d^-1]": (-cv_knn["mean_test_score"]).round(4),
+}).to_csv("tables/validation_knn.csv", index=False)
+
 fig.tight_layout()
-fig.savefig("fig_validation_curves.png", dpi=150)
+fig.savefig("figures/fig_validation_curves.png", dpi=150)
 plt.close(fig)
 
 # ---------------------------------------------------------------------
@@ -211,17 +253,17 @@ ax.set_ylabel(r"RMSE [d$^{-1}$]")
 ax.set_title("Learning curves (best hyperparameters)")
 ax.legend(fontsize=8)
 fig.tight_layout()
-fig.savefig("fig_learning_curves.png", dpi=150)
+fig.savefig("figures/fig_learning_curves.png", dpi=150)
 plt.close(fig)
 
 # ---------------------------------------------------------------------
 # 6. Interpretation
 # ---------------------------------------------------------------------
-print("\n=== Final models (tuned on all 315 samples) ===")
+print(f"\n=== Final models (tuned on all {len(y_all)} samples) ===")
 for name, search in final_models.items():
     print(f"{name:<10} best params: {search.best_params_}  validation RMSE = {-search.best_score_:.4f}")
 
-# 6a. Polynomial weights (on standardized features, as in the Unit 4b slides)
+# 6a. Polynomial weights (on standardized features, so magnitudes are comparable)
 poly_model = final_models["Polynomial"].best_estimator_
 term_names = poly_model.named_steps["poly"].get_feature_names_out(
     ["Temperature", "pH", "Glucose", "Lactate"])
@@ -231,6 +273,24 @@ print(f"Growth Rate = {regressor.intercept_:.4f}")
 order = np.argsort(-np.abs(regressor.coef_))
 for idx in order:
     print(f"   {regressor.coef_[idx]:+.4f} * [{term_names[idx].replace(' ', '] * [')}]")
+
+pd.DataFrame({
+    "Term": ["Intercept"] + [term_names[idx].replace(" ", " x ") for idx in order],
+    "Coefficient (standardized features)": [round(regressor.intercept_, 4)]
+                                           + [round(regressor.coef_[idx], 4) for idx in order],
+}).to_csv("tables/polynomial_coefficients.csv", index=False)
+
+# Predict growth across a grid of conditions spanning the observed data range,
+# then report the conditions with the highest and lowest predicted growth rates
+grid_axes = [np.linspace(X_all[:, j].min(), X_all[:, j].max(), 25) for j in range(X_all.shape[1])]
+X_cond = np.array(np.meshgrid(*grid_axes)).reshape(X_all.shape[1], -1).T
+y_cond = poly_model.predict(X_cond)
+extremes = pd.DataFrame(X_cond, columns=FEATURE_NAMES)
+extremes[f"Predicted {TARGET_NAME}"] = y_cond
+extremes = extremes.sort_values(f"Predicted {TARGET_NAME}", ascending=False)
+pd.concat([extremes.head(5).assign(Condition="Highest"),
+           extremes.tail(5).assign(Condition="Lowest")]) \
+    .round(3).to_csv("tables/predicted_extreme_conditions.csv", index=False)
 
 # 6b. Partial dependence plots: vary one feature, hold the others at their means
 feature_means = X_all.mean(axis=0)
@@ -248,7 +308,7 @@ for j, ax in enumerate(axes):
 axes[0].legend(fontsize=8)
 fig.suptitle("Predicted growth rate vs each factor (other factors held at their means)")
 fig.tight_layout()
-fig.savefig("fig_partial_dependence.png", dpi=150)
+fig.savefig("figures/fig_partial_dependence.png", dpi=150)
 plt.close(fig)
 
 # 6c. Parity plot for the outer-CV test predictions of each model
@@ -272,8 +332,10 @@ for ax, name in zip(axes, models):
     ax.set_title(f"{name}: test RMSE = {rmse(y_true_all, y_pred_all):.3f}")
 axes[0].set_ylabel(r"Predicted growth rate [d$^{-1}$]")
 fig.tight_layout()
-fig.savefig("fig_parity.png", dpi=150)
+fig.savefig("figures/fig_parity.png", dpi=150)
 plt.close(fig)
 
-print("\nFigures saved: fig_test_rmse_by_fold.png, fig_validation_curves.png, "
+print("\nFigures saved to figures/: fig_test_rmse_by_fold.png, fig_validation_curves.png, "
       "fig_learning_curves.png, fig_partial_dependence.png, fig_parity.png")
+print("Tables saved to tables/: cv_results_by_fold.csv, cv_summary.csv, validation_polynomial.csv, "
+      "validation_knn.csv, polynomial_coefficients.csv, predicted_extreme_conditions.csv")
