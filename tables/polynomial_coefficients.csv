@@ -1,0 +1,16 @@
+Term,Coefficient (standardized features)
+Intercept,0.3638
+pH^2,-0.0646
+Lactate,-0.0614
+Glucose,0.0332
+Temperature^2,-0.0246
+Temperature,-0.0197
+Glucose x Lactate,-0.0188
+Temperature x pH,-0.0187
+Temperature x Glucose,-0.0121
+Lactate^2,0.0118
+pH,-0.0091
+Temperature x Lactate,-0.0069
+pH x Lactate,0.0059
+pH x Glucose,-0.0056
+Glucose^2,-0.0013

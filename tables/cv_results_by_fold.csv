@@ -1,0 +1,11 @@
+Model,Test Fold,Best Hyperparameters,Train RMSE [d^-1],Test RMSE [d^-1],Test R2
+Polynomial,1,{'poly__degree': 2},0.1434,0.1597,0.439
+Polynomial,2,{'poly__degree': 2},0.1407,0.1716,0.107
+Polynomial,3,{'poly__degree': 2},0.1462,0.1526,0.139
+Polynomial,4,{'poly__degree': 2},0.151,0.131,0.379
+Polynomial,5,{'poly__degree': 2},0.1449,0.1551,0.417
+kNN,1,"{'regressor__n_neighbors': 15, 'regressor__weights': 'distance'}",0.0,0.1702,0.363
+kNN,2,"{'regressor__n_neighbors': 10, 'regressor__weights': 'distance'}",0.0,0.1609,0.215
+kNN,3,"{'regressor__n_neighbors': 9, 'regressor__weights': 'distance'}",0.0,0.1426,0.248
+kNN,4,"{'regressor__n_neighbors': 15, 'regressor__weights': 'distance'}",0.0,0.1454,0.235
+kNN,5,"{'regressor__n_neighbors': 7, 'regressor__weights': 'distance'}",0.0,0.1596,0.383
